@@ -1,0 +1,80 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+
+autonumber "<b>[000]"
+
+box "IRS" #LightBlue
+
+
+activate JobOrchestrator
+
+participant PartsTreeRecursiveJobHandler
+activate PartsTreeRecursiveJobHandler
+activate PartsTreeRecursiveLogic
+activate DataRequestFactory
+participant IrsAasClient
+activate IrsAasClient
+participant JobStore
+activate JobStore
+participant PartsTreesAssembler
+activate PartsTreesAssembler
+participant BlobStoreAPI
+activate BlobStoreAPI
+database Blobstore
+
+
+ -> JobOrchestrator: startJob(aasId, BlobstoreContainer, destinationKey)
+JobOrchestrator -> JobStore: create(Job)
+JobStore -> BlobStoreAPI: persist(job)
+
+
+JobOrchestrator -> PartsTreeRecursiveJobHandler: initiate(Job)
+PartsTreeRecursiveJobHandler -> PartsTreeRecursiveJobHandler : getPartsTreeRequest(job)
+PartsTreeRecursiveJobHandler -> PartsTreeRecursiveLogic : createInitialPartsTreeRequest(request)
+PartsTreeRecursiveJobHandler -> DataRequestFactory :createRequest
+DataRequestFactory -> DataRequestFactory :createRequest
+PartsTreeRecursiveJobHandler <- DataRequestFactory : return partsTreeRequest
+PartsTreeRecursiveJobHandler <- PartsTreeRecursiveLogic : return partsTreeRequest
+JobOrchestrator <- PartsTreeRecursiveJobHandler : return requests:Stream<DataRequest>
+
+JobOrchestrator -> JobOrchestrator :  startTransfers(job, requests)
+loop requests.map(startTransfers(request))
+    JobOrchestrator -> IrsAasClient : initiateConsumerRequest(dataRequest)
+    JobOrchestrator <- IrsAasClient : return response
+    JobOrchestrator ->> JobStore : addTransferProcess
+    JobStore <- JobStore : return response
+end loop
+alt transferCount == 0
+    JobStore -> JobStore : completeJob(job)
+    JobStroe -> PartsTreeRecursiveJobHandler  : completeJob(job)
+    PartsTreeRecursiveJobHandler -> PartsTreeRecursiveLogic : assemblePartialPartTreeBlobs
+    PartsTreeRecursiveLogic -> PartsTreesAssembler : retrievePartsTrees(partialTrees)
+    PartsTreeRecursiveLogic ->> BlobStoreAPI : putBlob
+end alt
+
+
+
+DataRequestFactory -> DataRequestFactory: getRequestFromRegistry or Endpoint
+DataRequestFactory --> Blobstore: store request in Blobstore
+PartsTreeRecursiveJobHandler <-- DataRequestFactory: Stream<DataRequest>
+JobOrchestrator <-- PartsTreeRecursiveJobHandler: Stream<DataRequest>
+loop over  Stream<DataRequest>
+    JobOrchestrator -> JobOrchestrator: startTransfer
+    ref over JobOrchestrator, TransferProcessManager
+        TransferProcessManager: initiateConsumerRequest(dataRequest)
+    end ref
+    JobOrchestrator --> InMemoryJobStore: addTransferProcess
+end loop
+PartsTreeRecursiveJobHandler -> PartsTreeRecursiveJobHandler:startTransfers
+note over PartsTreeRecursiveJobHandler
+    Some other stuff
+end note
+JobOrchestrator --> InMemoryJobStore: (completeTransferProcess)
+JobOrchestrator <-- InMemoryJobStore: success
+
+
+
+
+
+@enduml

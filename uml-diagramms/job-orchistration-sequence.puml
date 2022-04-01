@@ -1,10 +1,11 @@
 @startuml
 
 actor APIConsumer
-
+skinparam monochrome true
+skinparam shadowing false
 autonumber "<b>[000]"
 
-box "Consumer" #LightBlue
+box "IRS" #LightBlue
 participant ApiEndpointExtension
 activate WebService
 ApiEndpointExtension -> WebService: new()

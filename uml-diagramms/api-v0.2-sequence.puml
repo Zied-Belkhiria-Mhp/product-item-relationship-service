@@ -1,4 +1,9 @@
 @startuml
+skinparam monochrome true
+skinparam shadowing false
+note left
+    @Deprecated
+end note
 title IRS API sequence diagramm v0.2
 
 actor CE as "CE Dashboard"

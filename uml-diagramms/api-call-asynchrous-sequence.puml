@@ -1,5 +1,6 @@
 @startuml
-
+skinparam monochrome true
+skinparam shadowing false
 actor APIConsumer
 activate APIConsumer
 

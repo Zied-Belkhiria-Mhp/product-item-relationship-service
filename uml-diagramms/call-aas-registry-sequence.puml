@@ -1,6 +1,7 @@
 @startuml
 'https://plantuml.com/sequence-diagram
-
+skinparam monochrome true
+skinparam shadowing false
 autonumber "<b>[000]"
 box "Consumer" #LightBlue
 TransferProcessManager -> IRSClient: lookupAasId(aasID)
