@@ -6,6 +6,7 @@ autonumber "<b>[000]"
 
 box "IRS" #LightBlue
 
+activate JobTransferCallback
 
 activate JobOrchestrator
 
@@ -22,7 +23,9 @@ activate PartsTreesAssembler
 participant BlobStoreAPI
 activate BlobStoreAPI
 database Blobstore
+activate TransferProcessObservable
 
+JobOrchestrator -> TransferProcessObservable : registerListener(JobTransferCallback(this))
 
  -> JobOrchestrator: startJob(aasId, BlobstoreContainer, destinationKey)
 JobOrchestrator -> JobStore: create(Job)
@@ -34,26 +37,32 @@ PartsTreeRecursiveJobHandler -> PartsTreeRecursiveJobHandler : getPartsTreeReque
 PartsTreeRecursiveJobHandler -> PartsTreeRecursiveLogic : createInitialPartsTreeRequest(request)
 PartsTreeRecursiveJobHandler -> DataRequestFactory :createRequest
 DataRequestFactory -> DataRequestFactory :createRequest
-PartsTreeRecursiveJobHandler <- DataRequestFactory : return partsTreeRequest
-PartsTreeRecursiveJobHandler <- PartsTreeRecursiveLogic : return partsTreeRequest
-JobOrchestrator <- PartsTreeRecursiveJobHandler : return requests:Stream<DataRequest>
+PartsTreeRecursiveJobHandler <-- DataRequestFactory : return partsTreeRequest
+PartsTreeRecursiveJobHandler <-- PartsTreeRecursiveLogic : return partsTreeRequest
+JobOrchestrator <-- PartsTreeRecursiveJobHandler : return requests:Stream<DataRequest>
 
 JobOrchestrator -> JobOrchestrator :  startTransfers(job, requests)
 loop requests.map(startTransfers(request))
     JobOrchestrator -> IrsAasClient : initiateConsumerRequest(dataRequest)
-    JobOrchestrator <- IrsAasClient : return response
+    JobOrchestrator <-- IrsAasClient : return response
     JobOrchestrator ->> JobStore : addTransferProcess
-    JobStore <- JobStore : return response
+    JobStore <-- JobStore : return response
 end loop
 alt transferCount == 0
-    JobStore -> JobStore : completeJob(job)
-    JobStroe -> PartsTreeRecursiveJobHandler  : completeJob(job)
-    PartsTreeRecursiveJobHandler -> PartsTreeRecursiveLogic : assemblePartialPartTreeBlobs
+    JobOrchestrator -> JobOrchestrator : completeJob(job)
+    JobOrchestrator ->> PartsTreeRecursiveJobHandler  : completeJob(job)
+    PartsTreeRecursiveJobHandler ->> PartsTreeRecursiveLogic : assemblePartialPartTreeBlobs
     PartsTreeRecursiveLogic -> PartsTreesAssembler : retrievePartsTrees(partialTrees)
+    PartsTreeRecursiveLogic <-- PartsTreesAssembler : assembledTree
     PartsTreeRecursiveLogic ->> BlobStoreAPI : putBlob
 end alt
 
 
+JobOrchestrator <<- TransferProcessObservable  : completed
+note left
+    TransferProcessManagerImpl invokes if transitionToCompleted
+end note
+JobOrchestrator -> JobOrchestrator :  transferProcessCompleted(process)
 
 DataRequestFactory -> DataRequestFactory: getRequestFromRegistry or Endpoint
 DataRequestFactory --> Blobstore: store request in Blobstore
